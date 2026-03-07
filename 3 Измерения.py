@@ -22,8 +22,8 @@ MOKO.Report("Results", "info", "table", "Номер \\nзамера#60;"
                                                              "Входное \\nнапряжение, В#90;"
                                                              "Входной \\nток, А#60")
 
-#hesh Измерение
-#hesh Запись
+#hash Измерение
+#hash Запись
 
 MOKO.Driver('MaynuoM9714', 'set', 'Input = ON')
 

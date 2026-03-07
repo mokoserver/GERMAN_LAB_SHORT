@@ -21,10 +21,10 @@ def InitDevice(name: str):
 
 #Region Инициализация
 
-InitDevice("MaynuoM9714")         #hesh Инициализация MaynuoM9714
-InitDevice("Keysight66332A")      #hesh Инициализация Keysight66332A
-InitDevice("DMM6500_04582450")    #hesh Инициализация DMM6500_04582450
-InitDevice("DMM6500_04625545")    #hesh Инициализация DMM6500_04625545
+InitDevice("MaynuoM9714")         #hash Инициализация MaynuoM9714
+InitDevice("Keysight66332A")      #hash Инициализация Keysight66332A
+InitDevice("DMM6500_04582450")    #hash Инициализация DMM6500_04582450
+InitDevice("DMM6500_04625545")    #hash Инициализация DMM6500_04625545
 
 
 #EndRegion Инициализация
@@ -35,7 +35,7 @@ InitDevice("DMM6500_04625545")    #hesh Инициализация DMM6500_04625
 
 #Region Настройка параметров
 
-#hesh Настройка MaynuoM9714
+#hash Настройка MaynuoM9714
 MOKO.Program('tree', 'set', f'select = Настройка MaynuoM9714')
 time.sleep(3)
 MOKO.Driver('MaynuoM9714', 'set', f'V = {Uout_EL}')
@@ -45,7 +45,7 @@ time.sleep(3)
 MOKO.Program('tree', 'set', 'chosen=passed')
 ###################################################################################
 
-#hesh Настройка Keysight66332A
+#hash Настройка Keysight66332A
 MOKO.Program('tree', 'set', f'select = Настройка Keysight66332A')
 
 MOKO.Driver('Keysight66332A', 'set', 'OUTPUT = OFF')
@@ -57,7 +57,7 @@ time.sleep(3)
 MOKO.Program('tree', 'set', 'chosen=passed')
 ###################################################################################
 
-#hesh Настройка DMM6500_04582450
+#hash Настройка DMM6500_04582450
 
 MOKO.Program('tree', 'set', f'select = Настройка DMM6500_04582450')
 
@@ -69,7 +69,7 @@ time.sleep(3)
 MOKO.Program('tree', 'set', 'chosen=passed')
 ###################################################################################
 
-#hesh Настройка DMM6500_04625545
+#hash Настройка DMM6500_04625545
 
 MOKO.Program('tree', 'set', f'select = Настройка DMM6500_04625545')
 
