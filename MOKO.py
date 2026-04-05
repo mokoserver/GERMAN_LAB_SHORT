@@ -1,774 +1,1004 @@
-'''     This library works for connecting user scripts and the program MOKO SE using HTTP requests.
+'''
+Библиотека MOKO.py
+==================
 
-        26.02.2021 The library was renamed to MOKO.py
+Эта библиотека представляет собой Python-клиент для взаимодействия с программой MOKO SE.
+Она позволяет управлять различными компонентами, плагинами и устройствами, подключенными к MOKO SE,
+путем отправки HTTP-запросов на локальный сервер.
 
-        Library version: 1.5 dated 06.23.2021. Post requests format was changed for drivers.
+Ключевые возможности:
+---------------------
+- **Управление устройствами:** Взаимодействие с драйверами (`Driver`) и портами (`Port`).
+- **Автоматизация GUI:** Управление элементами интерфейса внешних приложений (`Autoit`).
+- **Взаимодействие с пользователем:** Отображение информационных окон и диалогов (`Messenger`).
+- **Логирование и отчеты:** Отправка сообщений в лог (`Stage`) и управление отчетами (`Report`).
+- **Управление системой:** Выполнение команд (`CMD`), работа с плагинами (`Plugin`) и утилитами (`Utility`).
+- **Синхронизация:** Контроль за состоянием выполнения проекта (`check_project_state`).
 
-        Documentation version: 1.2 - 02.03.2020.
+Принцип работы:
+---------------
+Библиотека функционирует как API-обертка, отправляя POST-запросы в формате JSON на
+HTTP-сервер, запущенный MOKO SE по адресу `http://localhost:55001`.
 
-        The version was changed 01.24.2022 for correct working start/pause/stop
+Зависимости:
+-------------
+- `requests`
+- `json`
 
-        The version was changed 08.22.2022 for updating parsing function and moving repeated code in functions
-
-        The version was changed 09.09.2022. A parameter type was changed to mode (except Stage) in json format.
-        That's why all old projects won't work with the new version, there is no backward compatibility.
-
-        Libraries 'requests' and 'json' are needed for working the library.
-
+История версий:
+---------------
+- 26.02.2021: Библиотека переименована в MOKO.py.
+- 23.06.2021 (v1.5): Изменен формат POST-запросов для драйверов.
+- 24.01.2022: Внесены исправления для корректной работы команд start/pause/stop.
+- 22.08.2022: Обновлена функция парсинга и проведена рефакторинг.
+- 09.09.2022: Параметр 'type' заменен на 'mode' в JSON-запросах (обратная совместимость нарушена).
+- 25.03.2026: Добавление регионов и комментариев в новом формате (обратная совместимость нарушена).
+- 26.03.2026: Подготовка к исключению библиотеки MOSK (обратная совместимость нарушена).
+- 30.03.2026: Добавлены сокращения для Stage (StageError, StageInfo и т.д.).
+- 30.03.2026: Добавлены функции  Tree & Hash, Time, Report
+- 05.04.2026: Добавлена функции  мессенджера MAX
 '''
 
 import time
 import requests
 import json
 import sys
+import os
+from typing import Literal,overload
+from functools import partial
 
 requests = requests.Session()
 
-_UrlStageWrite: str = 'http://localhost:55001/MOKOSE/stage/stagewrite'
+# region ### URLs for MOKO SE API / URL-адреса для MOKO SE API ###
+_BASE_URL = "http://localhost:55001/MOKOSE"
 
-_UrlAutoitWrite: str = 'http://localhost:55001/MOKOSE/system/autoitwrite'
-_UrlAutoitRead: str = 'http://localhost:55001/MOKOSE/system/autoitread'
+# --- Status ---
+_UrlProjectStateRead: str = f"{_BASE_URL}/status/projectstate"
 
-_UrlDriverWrite: str = 'http://localhost:55001/MOKOSE/system/driverwrite'
-_UrlDriverRead: str = 'http://localhost:55001/MOKOSE/system/driverread'
+# --- Stage ---
+_UrlStageWrite: str = f"{_BASE_URL}/stage/stagewrite"
 
-_UrlPluginWrite: str = 'http://localhost:55001/MOKOSE/system/pluginwrite'
-_UrlPluginRead: str = 'http://localhost:55001/MOKOSE/system/pluginread'
+# --- System Components ---
+_UrlAutoitWrite: str = f"{_BASE_URL}/system/autoitwrite"
+_UrlAutoitRead: str = f"{_BASE_URL}/system/autoitread"
 
-_UrlMessengerWrite: str = 'http://localhost:55001/MOKOSE/system/messengerwrite'
-_UrlMessengerRead: str = 'http://localhost:55001/MOKOSE/system/messengerread'
+_UrlDriverWrite: str = f"{_BASE_URL}/system/driverwrite"
+_UrlDriverRead: str = f"{_BASE_URL}/system/driverread"
 
-_UrlReportWrite: str = 'http://localhost:55001/MOKOSE/system/reportwrite'
-_UrlReportRead: str = 'http://localhost:55001/MOKOSE/system/reportread'
+_UrlPluginWrite: str = f"{_BASE_URL}/system/pluginwrite"
+_UrlPluginRead: str = f"{_BASE_URL}/system/pluginread"
 
-_UrlProgramWrite: str = 'http://localhost:55001/MOKOSE/system/programwrite'
-_UrlProgramRead: str = 'http://localhost:55001/MOKOSE/system/programread'
+_UrlMessengerWrite: str = f"{_BASE_URL}/system/messengerwrite"
+_UrlMessengerRead: str = f"{_BASE_URL}/system/messengerread"
 
-_UrlUtilityWrite: str = 'http://localhost:55001/MOKOSE/system/utilitywrite'
-_UrlUtilityRead: str = 'http://localhost:55001/MOKOSE/system/utilityread'
+_UrlReportWrite: str = f"{_BASE_URL}/system/reportwrite"
+_UrlReportRead: str = f"{_BASE_URL}/system/reportread"
 
-_UrlTelegramWrite: str = 'http://localhost:55001/MOKOSE/system/telegramwrite'
-_UrlTelegramRead: str = 'http://localhost:55001/MOKOSE/system/telegramread'
+_UrlProgramWrite: str = f"{_BASE_URL}/system/programwrite"
+_UrlProgramRead: str = f"{_BASE_URL}/system/programread"
 
-_UrlCmdWrite: str = 'http://localhost:55001/MOKOSE/system/cmdwrite'
-_UrlCmdRead: str = 'http://localhost:55001/MOKOSE/system/cmdread'
+_UrlUtilityWrite: str = f"{_BASE_URL}/system/utilitywrite"
+_UrlUtilityRead: str = f"{_BASE_URL}/system/utilityread"
 
-_UrlPortWrite: str = 'http://localhost:55001/MOKOSE/system/portwrite'
-_UrlPortRead: str = 'http://localhost:55001/MOKOSE/system/portread'
+_UrlTelegramWrite: str = f"{_BASE_URL}/system/telegramwrite"
+_UrlTelegramRead: str = f"{_BASE_URL}/system/telegramread"
 
-_UrlProjectStateRead: str = 'http://localhost:55001/MOKOSE/status/projectstate'
+_UrlMaxWrite: str = f"{_BASE_URL}/system/maxwrite"
+_UrlMaxRead: str = f"{_BASE_URL}/system/maxread"
 
+_UrlCmdWrite: str = f"{_BASE_URL}/system/cmdwrite"
+_UrlCmdRead: str = f"{_BASE_URL}/system/cmdread"
 
-###################################################################################################################
+_UrlPortWrite: str = f"{_BASE_URL}/system/portwrite"
+_UrlPortRead: str = f"{_BASE_URL}/system/portread"
+# endregion
 
-    ##          ##          ####        ##########      ##        ##
-    ####      ####         ##  ##           ##          ####      ##
-    ## ##    ## ##        ##    ##          ##          ## ##     ##
-    ##  ##  ##  ##       ##      ##         ##          ##  ##    ##
-    ##   ####   ##      ############        ##          ##   ##   ##
-    ##    ##    ##      ##        ##        ##          ##    ##  ##
-    ##          ##      ##        ##        ##          ##     ## ##
-    ##          ##      ##        ##        ##          ##      ####
-    ##          ##      ##        ##    ##########      ##       ###
+# region ### MOKO SE API Functions / Функции MOKO SE API #####################
 
-###################################################################################################################
+# region --- CMD / Командная строка --- +-
+def CMD(mode: Literal['set', 'get'],
+        command: str) -> ...:
+    """
+    Выполняет команду в командной строке (CMD) через MOKO SE.
 
-def CMD (mode: str, command: str) -> ...:
+    Args:
+        mode (str): Режим выполнения команды. Возможные значения: ???.
+        command (str): Команда для выполнения.
+
+    Returns:
+        str: Результат выполнения команды, возвращенный сервером. Формат: ???.
+    """
     check_project_state()
-
     URLWrite: str = _UrlCmdWrite
     URLRead: str = _UrlCmdRead
-
-    command_to_send: str = '{"mode":"'+ str(mode)+'", "command":"'+str(command) +'"}'
-
+    command_to_send: str = f'{{"mode":"{str(mode)}", "command":"{str(command)}"}}'
     send_request(URLWrite, command_to_send)
-
     cmddata: str = check_status("cmd", mode, URLRead)
     return cmddata
+# endregion
 
-def Port(name: str, mode: str, command: str = '', valuetype: str = 'string') -> ...:
+# region --- Port / Порт ---
+def Port(
+    name: str,
+    mode: Literal['init', 'interface', 'write', 'read','clear'],
+    command: str = '',
+    valuetype: Literal['string', 'int', 'float', 'bool', 'arrayint', 'arrayfloat', 'arrayboolean', 'arraystring'] = 'string'
+) -> ...:
+    """
+    Управляет портами и устройствами, настроенными в MOKO SE.
 
+    Позволяет инициализировать, настраивать, отправлять и получать данные с устройств,
+    подключенных через различные интерфейсы (COM, LPT, и т.д.), используя их логическое имя.
+
+    Args:
+        name (str): Логическое имя порта/устройства, заданное в MOKO SE.
+        mode (str): Режим работы. Основные значения: 'init', 'interface', 'write', 'read'.
+        command (str, optional): Команда или данные для отправки в порт (используется в режиме 'write'). Defaults to ''.
+        valuetype (str, optional): Ожидаемый тип данных при чтении (используется в режиме 'read'). Defaults to 'string'.
+
+    Returns:
+        str: Результат операции. Например:
+             - Для 'init' и 'interface': 'ok' в случае успеха, 'error' в случаи не подключения.
+             - Для 'write': 'ok' в случае успеха, 'error' в случаи ошибки.
+             - Для 'read': прочитанные данные.
+             - В случае ошибки может возвращать 'error'.
+    """
     check_project_state()
-
     URLWrite: str = _UrlPortWrite
     URLRead: str = _UrlPortRead
-
-    command_to_send: str = '{"name":"' + str(name) + '","mode":"' + str(mode) + '","command":"' + str(command) + '"}'
+    command_to_send: str = f'{{"name":"{str(name)}","mode":"{str(mode)}","command":"{str(command)}"}}'
     send_request(URLWrite, command_to_send)
-
     portdata: str = check_status("port", mode, URLRead)
-    print(f"portdata = {portdata}")
-    return portdata
+    return parse_data(portdata, mode, valuetype)
+# endregion
 
-
-
-###################################################################################################################
-
-             ##                ##          ##         ###################
-           ##  ##              ##          ##                 ##
-          ##    ##             ##          ##                 ##
-         ##      ##            ##          ##                 ##
-        ############           ##          ##                 ##
-       ##          ##          ##          ##                 ##
-      ##            ##         ##          ##                 ##
-     ##              ##        ##############                 ##
-
-###################################################################################################################
-
-
-def Autoit(title: str, classname: str, method: str, attributes: str = 'void') -> ...:
+# region --- Autoit / Автоматизация GUI ---
+def Autoit(title: str,
+           classname: str,
+           method: Literal['ControlClick', 'ControlGetText', 'ControlSetText'],
+           attributes: str = 'void') -> ...:
     """
-        This function causes a pop-up message to appear on the screen with an optional data entry field.
+    Взаимодействует с элементами GUI внешних приложений, используя технологию AutoIt.
 
-        :param str title: title application, choise on autoit
-        :param str classname: name class autoit
-        :param str method: name method command
-        :param str attributes: attributes commands in autoit application
-        :return: None if information incorrected, else string information, writing in application, choise on autoit
+    Позволяет автоматизировать действия в окнах, например, чтение текста из полей или нажатие кнопок.
 
-        **Examples:**
+    Args:
+        title (str): Заголовок окна целевого приложения.
+        classname (str): Имя класса элемента управления в окне (например, 'Edit1').
+        method (str): Метод для выполнения над элементом (например, 'ControlGetText').
+        attributes (str, optional): Дополнительные атрибуты для команды. Defaults to 'void'.
 
-        **1.**
-        We need to show an user message. Let's write the next command:
-
-        >>> Autoit('Notepad.txt', 'Edit1', 'ControlGetText', '')
-
-        The next string appears in terminal in case of successfull execution:
-
-        ``b'{"title":"Notepad.txt","classname":"Edit1","method":"ControlGetText","attributes":""}'``
-
-        Else if the command isn't executed you will see the next string in a terminal:
-
-        ``b'<!DOCTYPE html><html><head><title>Bad Request</title></head><body><h2>Access Error: 400 -- Bad Request</h2><pre>Bad Request</pre></body></html>'``
-
-
+    Returns:
+        str: Результат выполнения команды (например, полученный текст).
     """
     check_project_state()
-
     URLWrite: str = _UrlAutoitWrite
     URLRead: str = _UrlAutoitRead
-
-    command_to_send: str = '{"title":"'+ str(title)+'", "classname":"'+str(classname) +'","method":"'+str(method) + '","attributes":"'+str(attributes)+'"}'
-
+    command_to_send: str = f'{{"title":"{str(title)}", "classname":"{str(classname)}","method":"{str(method)}","attributes":"{str(attributes)}"}}'
     send_request(URLWrite, command_to_send)
-
     autoitdata: str = check_status("autoit", method, URLRead)
     return autoitdata
+# endregion
 
-
-###################################################################################################################
-
-    ##########      ##################          ####
-    ##                      ##                 ##  ##
-    ##                      ##                ##    ##
-    ##                      ##               ##      ##
-    ##########              ##              ############
-            ##              ##              ##        ##
-            ##              ##              ##        ##
-            ##              ##              ##        ##
-    ##########              ##              ##        ##
-
-###################################################################################################################
-
-
-def Stage(stage_string: str, type: str = 'info') -> None:
+# region --- Stage / Логирование этапов ---
+def Stage(message: str = '',
+          type: Literal['info', 'success', 'fail', 'empty', 'error', 'warning',
+                        'telegram', 'messenger', 'utility', 'cmd', 'port', 'driver', 'plugin', 'report', 'autoit',
+                        'project', 'script'] = "info") -> None:
     """
-        This function writes a string in Stage.
+    Отправляет и отображает сообщение в окне "Stage" в MOKO SE.
 
-        :param str stage_string: a string, writing in Stage.
-        :param str type: string type in Stage (**Info**, **Error**, **Plugin**, **Driver**, **Report**, **Warning**). По умолчанию **Info**.
-        :return: None
+    Используется для логирования и информирования пользователя во время выполнения скрипта.
 
-        **Examples:**
-
-        **1.**
-        We need to write a string **'Hello, World!'** in Stage. Let's write the next command:
-
-        >>> Stage('Hello, World!')
-
-        The next string appears in terminal in case of successfull execution:
-
-        ``b'{"string": "Hello World!", "type":"info"}'``
-
-        An Info string appears in the program MOKO SE Stage:
-
-        ``Hello World!``
-
-        Else if the command isn't executed you will see the next string in a terminal:
-
-        ``b'<!DOCTYPE html><html><head><title>Bad Request</title></head><body><h2>Access Error: 400 -- Bad Request</h2><pre>Bad Request</pre></body></html>'``
-
-        **2.**
-        We need to write an error string **'ERROR! Wrong request type!'** in Stage.
-
-        If we specify the type of output string, the command will look like this:
-
-        >>> Stage('ERROR! Wrong request type!', 'ERROR')
-
-        The next string appears in terminal in case of successfull execution:
-
-        ``b'{"string": "ERROR IN PYTHON LIBRARY! Wrong request type!", "type":"ERROR"}'``
-
-        An error string appears in the program MOKO SE Stage:
-
-        ``ERROR! Wrong request type!``
-
-        Else if the command isn't executed you will see the next string in a terminal:
-
-        ``b'<!DOCTYPE html><html><head><title>Bad Request</title></head><body><h2>Access Error: 400 -- Bad Request</h2><pre>Bad Request</pre></body></html>'``
-
-    '+str(name)+'
+    Args:
+        message (str): Текст сообщения для вывода.
+        type (str, optional): Тип сообщения. Влияет на его отображение.
+                              Возможные значения: 'Info', 'Error', 'Plugin', 'Driver', 'Report', 'Warning'.
+                              Defaults to 'info'.
     """
+    type = type.lower()
     check_project_state()
     URLWrite: str = _UrlStageWrite
-    command_to_send: str = '{"string" :"'+str(stage_string)+'", "type":"'+str(type)+'"}'
+    command_to_send: str = f'{{"string" :"{str(message)}", "type":"{str(type)}"}}'
     send_request(URLWrite, command_to_send)
+# endregion
 
+# region --- Stage Shortcuts / Сокращения для Stage --- <-- ИЗМЕНЕНИЕ 3: Новый регион
+# Информационные
+StageInfo = partial(Stage, type='info')
+StageSuccess = partial(Stage, type='success')
+StageFail = partial(Stage, type='fail')
+StageEmpty = partial(Stage, type='empty')
+StageError = partial(Stage, type='error')
+StageWarning = partial(Stage, type='warning')
+# Имитирующие
+StageTelegram = partial(Stage, type='telegram')
+StageMax = partial(Stage, type='max')
+StageMessenger = partial(Stage, type='messenger')
+StageUtility = partial(Stage, type='utility')
+StageAutoit = partial(Stage, type='autoit')
+StageCmd = partial(Stage, type='cmd')
+StagePort = partial(Stage, type='port')
+StageDriver = partial(Stage, type='driver')
+StagePlugin = partial(Stage, type='plugin')
+StageReport = partial(Stage, type='report')
+# Системные
+StageProject = partial(Stage, type='project')
+StageScript = partial(Stage, type='script')
+# endregion
 
-###################################################################################################################
-
-    #####           #######         ##########
-    ##   ##         ##     ##           ##
-    ##     ##       ##      ##          ##
-    ##      ##      ##     ##           ##
-    ##      ##      #######             ##
-    ##      ##      ####                ##
-    ##     ##       ## ##               ##
-    ##   ##         ##   ##             ##
-    #####           ##     ##       ##########
-
-###################################################################################################################
-
-
-def Driver(name: str, mode: str, command: str = 'void', valuetype: str = 'string') -> ...:
+# region --- Driver / Драйвер ---
+def Driver(name: str,
+           mode: Literal['set', 'get','init','check','close'],
+           command: str = 'void',
+           valuetype: Literal['string', 'int', 'float', 'bool', 'arrayint', 'arrayfloat', 'arrayboolean', 'arraystring'] = 'string') -> ...:
     """
-        This function works with drivers.
+    Управляет драйверами устройств через MOKO SE.
 
-        :param str name: driver name
-        :param str mode: command mode (**'get'**, **'set'**, **'init'**, **'close'**)
-        :param str command: executable command
-        :param str valuetype: **(only for mode = 'get')** Data type, received from d driver. Default *string*.
-        :return: None (if mode = **'set'**) or received data from a driver if mode = **'get'**)
+    Args:
+        name (str): Имя драйвера.
+        mode (str): Режим работы с драйвером ('get', 'set', 'init', 'close').
+        command (str, optional): Команда для драйвера. Defaults to 'void'.
+        valuetype (str, optional): Ожидаемый тип данных при чтении (только для mode='get'). Defaults to 'string'.
 
-        **Examples:**
-
-        **1.**
-        We need to initialize the driver SMBV100A. Let's write the next command:
-
-        >>> Driver('SMBV100A', 'init', '')
-
-        The next string appears in terminal in case of successfull execution:
-
-        ``b'{"name": "SMBV100A", "mode": "init", "command": ""}'``
-
-        The initialize window should appears on a screen (interface choice).
-
-        Else if the command isn't executed you will see the next string in a terminal:
-
-        ``b'<!DOCTYPE html><html><head><title>Bad Request</title></head><body><h2>Access Error: 400 -- Bad Request</h2><pre>Bad Request</pre></body></html>'``
-
-        **2.**
-        We need to reset the instrument SMBV100A. Let's write the next command:
-
-        >>> Driver('SMBV100A', 'set', 'reset')
-
-        The next string appears in terminal in case of successfull execution:
-
-        ``b'{"name": "SMBV100A", "mode": "set", "command": "reset"}'``
-
-        Else if the command isn't executed you will see the next string in a terminal:
-
-        ``b'<!DOCTYPE html><html><head><title>Bad Request</title></head><body><h2>Access Error: 400 -- Bad Request</h2><pre>Bad Request</pre></body></html>'``
-
-        **3.**
-        We need to read random value from ExDriver (example driver). Let's write the next command:
-
-        >>> Driver('ExDriver', 'get', 'random', 'float')
-
-        The next string appears in terminal in case of successfull execution:
-
-        ``b'{"name": "Test", "mode": "get", "command": "test"}'``
-
-        Else if the command isn't executed you will see the next string in a terminal:
-
-        ``b'<!DOCTYPE html><html><head><title>Bad Request</title></head><body><h2>Access Error: 400 -- Bad Request</h2><pre>Bad Request</pre></body></html>'``
-
-        If valuetype = 'void' and mode = 'get', the error will appear and will be shown in MOKO SE Stage
+    Returns:
+        Зависит от режима:
+        - 'set', 'init', 'close': None
+        - 'get': Данные, полученные от драйвера, преобразованные к типу `valuetype`.
     """
     check_project_state()
-
     URLWrite: str = _UrlDriverWrite
     URLRead: str = _UrlDriverRead
-
-    command_to_send: str = '{"name":"' + str(name) + '","mode":"' + str(mode) + '","command":"' + str(command) + '"}'
+    command_to_send: str = f'{{"name":"{str(name)}","mode":"{str(mode)}","command":"{str(command)}"}}'
     send_request(URLWrite, command_to_send)
-
     drvdata: str = check_status("driver", mode, URLRead)
     return parse_data(drvdata, mode, valuetype)
+# endregion
 
-
-
-###################################################################################################################
-
-    #######         ##                  ##         ##
-    ##     ##       ##                  ##         ##
-    ##      ##      ##                  ##         ##
-    ##     ##       ##                  ##         ##
-    #######         ##                  ##         ##
-    ##              ##                  ##         ##
-    ##              ##                  ##         ##
-    ##              ##                  ##         ##
-    ##              #############       #############
-
-###################################################################################################################
-
-
-def Plugin(name: str, mode: str, command: str = 'void', valuetype: str = 'void') -> ...:
-
+# region --- Plugin / Плагин ---
+def Plugin(name: str,
+           mode: Literal['set', 'get','init','check','close'],
+           command: str = 'void',
+           valuetype: Literal['string', 'int', 'float', 'bool', 'arrayint', 'arrayfloat', 'arrayboolean', 'arraystring'] = 'string') -> ...:
     """
-        This function works with plugins.
+    Управляет плагинами в MOKO SE.
 
-        :param str name: plugin name
-        :param str mode: command mode (**'get'**, **'set'**, **'init'**)
-        :param str command: executed command
-        :param str valuetype: (only for mode = **'get'**) data type receiving from a plugin. Default *void*.
-        :return: None (if mode = **'set'**) or received data from a plugin (if mode = **'get'**)
+    Args:
+        name (str): Имя плагина.
+        mode (str): Режим работы с плагином ('get', 'set', 'init').
+        command (str, optional): Команда для плагина. Defaults to 'void'.
+        valuetype (str, optional): Ожидаемый тип данных при чтении (только для mode='get'). Defaults to 'void'.
 
-        **Examples:**
-
-        **1.**
-        We need to initialize the plugin NMEA0183. Let's write the next command:
-
-        >>> Plugin("NMEA0183", "init", "")
-
-        The next string appears in terminal in case of successfull execution:
-
-        ``b'{"name": "NMEA0183", "mode": "init", "command": ""}'``
-
-        The plugin windowm should appear in a screen
-
-        Else if the command isn't executed you will see the next string in a terminal:
-
-        ``b'<!DOCTYPE html><html><head><title>Bad Request</title></head><body><h2>Access Error: 400 -- Bad Request</h2><pre>Bad Request</pre></body></html>'``
-
-        **2.**
-        We need to reset the plugin NMEA0183 protocols. Let's write the next command:
-
-        >>> Plugin("NMEA0183", "set", "ProtocolReset=True")
-
-        The next string appears in terminal in case of successfull execution:
-
-        ``b'{"name": "NMEA0183", "mode": "set", "command": "ProtocolReset=True"}'``
-
-        Else if the command isn't executed you will see the next string in a terminal:
-
-        ``b'<!DOCTYPE html><html><head><title>Bad Request</title></head><body><h2>Access Error: 400 -- Bad Request</h2><pre>Bad Request</pre></body></html>'``
-
-        **3.**
-        We need to read coordinate determination time from the plugin NMEA0183. Let's write the next command:
-
-        >>> Plugin('NMEA0183', 'get','CoordinatesValidTime', 'float')
-
-        The next string appears in terminal in case of successfull execution:
-
-        ``b'{"name": "NMEA0183", "mode": "get", "command": "CoordinatesValidTime"}'``
-
-        The function should return time in seconds:
-
-        ``0 (but it is an error for the plugin NMEA0183 command)``
-
-        or for instance:
-
-        ``17.56``
-
-        Else if the command isn't executed you will see the next string in a terminal:
-
-        ``b'<!DOCTYPE html><html><head><title>Bad Request</title></head><body><h2>Access Error: 400 -- Bad Request</h2><pre>Bad Request</pre></body></html>'``
-
-        If valuetype = 'void' and mode = 'get', the error will appear and will be shown in MOKO SE Stage
+    Returns:
+        Зависит от режима:
+        - 'set', 'init': None
+        - 'get': Данные, полученные от плагина, преобразованные к типу `valuetype`.
     """
-    # Проверка состояния проекта: Старт/Стоп/Пауза
     check_project_state()
-
     URLWrite: str = _UrlPluginWrite
     URLRead: str = _UrlPluginRead
-
-    command_to_send: str = '{"name":"' + str(name) + '","mode":"' + str(mode) + '","command":"' + str(command) + '"}'
+    command_to_send: str = f'{{"name":"{str(name)}","mode":"{str(mode)}","command":"{str(command)}"}}'
     send_request(URLWrite, command_to_send)
-
     plgdata: str = check_status("plugin", mode, URLRead)
     return parse_data(plgdata, mode, valuetype)
+# endregion
 
-
-###################################################################################################################
-
-    ##          ##      ############        ##########
-    ####      ####      ##                  ##
-    ## ##    ## ##      ##                  ##
-    ##  ##  ##  ##      ##                  ##
-    ##   ####   ##      ########            ##########
-    ##    ##    ##      ##                          ##
-    ##          ##      ##                          ##
-    ##          ##      ##                          ##
-    ##          ##      ############        ##########
-
-###################################################################################################################
-
-
-def Messenger(mode: str, head: str = '', body: str = '', valuetype: str = 'void', delaytime: str = 'void') -> ...:
+# region --- Messenger / Сообщения ---
+def Messenger(mode: Literal['set', 'get'],
+              head: str = '',
+              body: str = '',
+              valuetype: str = 'void',
+              delaytime: str = 'void') -> ...:
     """
-        This function causes a pop-up message to appear on the screen with an optional data entry field.
+    Отображает всплывающее окно (мессенджер) в MOKO SE для взаимодействия с пользователем.
 
-        :param str mode: command mode (**'get'**, **'set'**)
-        :param str head: message head.
-        :param str body: message content.
-        :param str valuetype: **(only for mode = 'get')** data type received from a message window. Default *void*.
-        :param str delaytime: *(if it is needed)* delay time in seconds.
-        :return: None (if mode = **'set'**) or entered data from a message window (if mode = **'get'**)
+    Args:
+        mode (str): Режим окна ('get' для ввода данных, 'set' для отображения информации).
+        head (str, optional): Заголовок окна. Defaults to ''.
+        body (str, optional): Основной текст сообщения. Defaults to ''.
+        valuetype (str, optional): Ожидаемый тип данных при вводе (только для mode='get'). Defaults to 'void'.
+        delaytime (str, optional): Время (в секундах), на которое окно задержится на экране. Defaults to 'void'.
 
-        **Examples:**
-
-        **1.**
-        We need to show an user message. Let's write the next command:
-
-        >>> Messenger('set', 'Info', 'Please connect the device and launch NMEA0183 plugin.')
-
-        The next string appears in terminal in case of successfull execution:
-
-        ``b'{"mode": "set", "head": "Info", "body": "Please connect the device and launch NMEA0183 plugin."}'``
-
-        Else if the command isn't executed you will see the next string in a terminal:
-
-        ``b'<!DOCTYPE html><html><head><title>Bad Request</title></head><body><h2>Access Error: 400 -- Bad Request</h2><pre>Bad Request</pre></body></html>'``
-
-        **2.**
-        We need to show a message for user to enter a number. Let's write the next command:
-
-        >>> Messenger('get', 'First number', 'Please, enter the first number', 'int')
-
-        The next string appears in terminal in case of successfull execution:
-
-        ``b'{"mode": "get", "head": "First number", "body": "Please, enter the first number"}'``
-
-        The function should return entered number, for example:
-
-        ``123``
-
-        Else if the command isn't executed you will see the next string in a terminal:
-
-        ``b'<!DOCTYPE html><html><head><title>Bad Request</title></head><body><h2>Access Error: 400 -- Bad Request</h2><pre>Bad Request</pre></body></html>'``
-
-        If valuetype = 'void' and mode = 'get', the error will appear and will be shown in MOKO SE Stage.
-
-        **3.**
-        We need to show a message that the script execution is delayed by 15 minutes.
-
-        if we need a delay in a message, it is done like the next example:
-
-        >>> Messenger('set', 'Info', 'Please, wait for 15 minutes', 'void', str(15*60))
-
-        The next string appears in terminal in case of successfull execution:
-
-        ``b'{"mode": "set", "head": "Info", "body": "Please, wait for 15 minutes", "time": "900"}'``
-
-
-        Else if the command isn't executed you will see the next string in a terminal:
-
-        ``b'<!DOCTYPE html><html><head><title>Bad Request</title></head><body><h2>Access Error: 400 -- Bad Request</h2><pre>Bad Request</pre></body></html>'``
-
+    Returns:
+        Зависит от режима:
+        - 'set': None
+        - 'get': Данные, введенные пользователем.
     """
     check_project_state()
-
     URLWrite: str = _UrlMessengerWrite
     URLRead: str = _UrlMessengerRead
-
     if (delaytime == 'void'):
-        command_to_send: str = '{"mode":"'+str(mode)+'","head":"'+str(head)+'","body":"'+str(body)+'","value":"'+str(valuetype)+'"}'
+        command_to_send: str = f'{{"mode":"{str(mode)}","head":"{str(head)}","body":"{str(body)}","value":"{str(valuetype)}"}}'
     else:
-        command_to_send: str = '{"mode":"'+str(mode)+'","head":"'+str(head)+'","body":"'+str(body)+'","time":"'+str(delaytime)+'"}'
-
+        command_to_send: str = f'{{"mode":"{str(mode)}","head":"{str(head)}","body":"{str(body)}","time":"{str(delaytime)}"}}'
     send_request(URLWrite, command_to_send)
-
     msgdata: str = check_status("messenger", mode, URLRead)
     return parse_data(msgdata, mode, valuetype)
+# endregion
 
-
-###################################################################################################################
-
-    ######          ############        #######
-    ##    ##        ##                  ##     ##
-    ##     ##       ##                  ##      ##
-    ##   ##         ##                  ##     ##
-    ## ##           ######              #######
-    ####            ##                  ##
-    ## ##           ##                  ##
-    ##   ##         ##                  ##
-    ##     ##       ############        ##
-
-###################################################################################################################
-
-
-def Report(name: str, mode: str, kind: str = 'string', data: str = '', valuetype: str = 'void') -> ...:
+# region --- Report / Отчет ---
+def Report(name: str,
+           mode: Literal['info', 'set','get','clear','delete','save'],
+           kind: Literal['string', 'table', 'picture', 'strings'] = 'string',
+           data: str = '',
+           valuetype: Literal['string', 'int', 'float', 'bool', 'arrayint', 'arrayfloat', 'arrayboolean', 'arraystring'] = 'string') -> ...:
     """
-        This function works with data in a report.
+    Работает с данными в отчете MOKO SE.
 
-        :param str name: report name and bookmark name in a document-template Microsoft Word
-        :param str mode: command mode
-        :param str kind: type of record in a report (**string**, **table** and **picture**)
-        :param str data: data written to the report
-        :param str valuetype: (only for mode = 'get') data type received from a report. Default *void*.
-        :return: None (if mode = **'set'**) or received data from a report (if mode = **'get'**)
+    Args:
+        name (str): Имя отчета или закладки в документе Word.
+        mode (str): Режим работы ('get', 'set', ???).
+        kind (str, optional): Тип записываемых данных ('string', 'table', 'picture'). Defaults to 'string'.
+        data (str, optional): Данные для записи в отчет. Defaults to ''.
+        valuetype (str, optional): Ожидаемый тип данных при чтении (только для mode='get'). Defaults to 'void'.
 
-        **Examples:**
-
-        **1.**
-        We need to output the string *'FgsFds'* to the report. Let's write the next command:
-
-        >>> Report("rep1",'set', 'string', 'FgsFds')
-
-        The next string appears in case of successfull execution in the terminal:
-
-        ``b'{"name": "rep1", "mode": "set", "kind": "string", "data": "FgsFds"}'``
-
-        The element 'rep1' should appear in the table 'Report names' in the tab 'Report' in the program MOKO SE. By clicking on this element, the *FgsFds* line should appear in the 'Reports' table.
-
-        Else if the command isn't executed you will see the next string in a terminal:
-
-        ``b'<!DOCTYPE html><html><head><title>Bad Request</title></head><body><h2>Access Error: 400 -- Bad Request</h2><pre>Bad Request</pre></body></html>'``
-
-        **2.**
-        We need to output 3 strings in the report table. Let's write the next command:
-
-        >>> Report("rep2",'set', 'table', 'FgsFds, fgsfds, etc')
-
-        The next string appears in case of successfull execution in the terminal:
-
-        ``b'{"name": "rep2", "mode": "set", "kind": "table", "data": "FgsFds, fgsfds, etc"}'``
-
-        The element 'rep2' should appear in the table 'Report names' in the tab 'Report' in the program MOKO SE. By clicking on this element in the 'Reports' table, three columns in one row should be filled with the values 'FgsFds', 'fgsfds' and 'etc' respectively.
-
-        Else if the command isn't executed you will see the next string in a terminal:
-
-        ``b'<!DOCTYPE html><html><head><title>Bad Request</title></head><body><h2>Access Error: 400 -- Bad Request</h2><pre>Bad Request</pre></body></html>'``
-
+    Returns:
+        Зависит от режима:
+        - 'set': None
+        - 'get': Данные, полученные из отчета.
     """
     check_project_state()
-
     URLWrite: str = _UrlReportWrite
     URLRead: str = _UrlReportRead
-
-    command_to_send: str = '{"name":"'+str(name)+'","mode":"'+str(mode)+'", "kind":"'+str(kind)+'", "data":"'+str(data)+'"}'
+    command_to_send: str = f'{{"name":"{str(name)}","mode":"{str(mode)}", "kind":"{str(kind)}", "data":"{str(data)}"}}'
     send_request(URLWrite, command_to_send)
-
     repdata: str = check_status("report", mode, URLRead)
     return parse_data(repdata, mode, valuetype)
+# endregion
 
-
-###################################################################################################################
-
-    ##         ##   ##################
-    ##         ##           ##
-    ##         ##           ##
-    ##         ##           ##
-    ##         ##           ##
-    ##         ##           ##
-    ##         ##           ##
-    ##         ##           ##
-    #############           ##
-
-###################################################################################################################
-
-
-def Utility(name: str, mode: str, command: str = 'void', valuetype: str = 'void') -> ...:
-
+# region --- Utility / Утилита ---
+def Utility(name: str,
+            mode: Literal['set', 'get'],
+            command: str = 'void',
+            valuetype: Literal['string', 'int', 'float', 'bool', 'arrayint', 'arrayfloat', 'arrayboolean', 'arraystring'] = 'string') -> ...:
     """
-        This function works with utilities.
+    Управляет утилитами в MOKO SE.
 
-        :param str name: utulity name
-        :param str mode: command mode (**'get'**, **'set'**)
-        :param str command: executable command
-        :param str valuetype: (only if mode = **'get'**) data type received from a utility. Default *void*.
-        :return: None (if mode = **'set'**) or received data from a utility (if mode = **'get'**)
+    Args:
+        name (str): Имя утилиты.
+        mode (str): Режим работы ('get', 'set', ???).
+        command (str, optional): Команда для утилиты. Defaults to 'void'.
+        valuetype (str, optional): Ожидаемый тип данных при чтении (только для mode='get'). Defaults to 'void'.
 
-        **Examples:**
-
-        **1.**
-        We need to show an user window in the CSM_GNSS utility. Let's write the next command:
-
-        >>> Utility('CSM_GNSS', 'set', 'info')
-
-        The next string appears in case of successfull execution in the terminal:
-
-        ``b'{"name": "CSM_GNSS", "mode": "set", "command": "info"}'``
-
-        Else if the command isn't executed you will see the next string in a terminal:
-
-        ``b'<!DOCTYPE html><html><head><title>Bad Request</title></head><body><h2>Access Error: 400 -- Bad Request</h2><pre>Bad Request</pre></body></html>'``
-
-        **2.**
-        We need to get temperature from the CSM_GNSS utility. Let's write the next command:
-
-        >>> Utility('CSM_GNSS', 'get', 'temperature', 'float')
-
-        The next string appears in case of successfull execution in the terminal:
-
-        ``b'{"name": "CSM_GNSS", "mode": "get", "command": "temperature"}'``
-
-        Else if the command isn't executed you will see the next string in a terminal:
-
-        ``b'<!DOCTYPE html><html><head><title>Bad Request</title></head><body><h2>Access Error: 400 -- Bad Request</h2><pre>Bad Request</pre></body></html>'``
-
-        If valuetype = 'void' and mode = 'get', the error will appear and will be shown in MOKO SE Stage
+    Returns:
+        Зависит от режима:
+        - 'set': None
+        - 'get': Данные, полученные от утилиты.
     """
     check_project_state()
-
     URLWrite: str = _UrlUtilityWrite
     URLRead: str = _UrlUtilityRead
-
-    command_to_send: str = '{"name" :"' + str(name) + '", "mode":"' + str(mode) + '", "command":"' + str(command) + '"}'
+    command_to_send: str = f'{{"name" :"{str(name)}", "mode":"{str(mode)}", "command":"{str(command)}"}}'
     send_request(URLWrite, command_to_send)
-
     utldata: str = check_status("utility", mode, URLRead)
     return parse_data(utldata, mode, valuetype)
+# endregion
 
-
-###################################################################################################################
-
-    #######         ######          #############
-    ##     ##       ##    ##        ##         ##
-    ##      ##      ##     ##       ##         ##
-    ##     ##       ##   ##         ##         ##
-    #######         ## ##           ##         ##
-    ##              ####            ##         ##
-    ##              ## ##           ##         ##
-    ##              ##   ##         ##         ##
-    ##              ##     ##       #############
-
-###################################################################################################################
-
-
-def Program(name: str, mode: str, command: str, valuetype: str = 'void') -> ...:
+# region --- Telegram / Мессенджер Телеграм ---
+def Telegram(role: Literal['alpha', 'beta', 'gamma', 'delta', 'xi', 'id'] = 'alpha',
+             mode: Literal['set','get'] = 'set',
+             command: str = '',
+             valuetype: Literal['void'] = 'void') -> ...:
     """
-        This function manages the MOKO SE program (scripts, projects, etc.)
+    Работает с Telegram ботом MOKO SE.
 
-        :param str name: type name to be controlled ('script', 'project', etc.)
-        :param str mode: command mode (now only **'set'**).
-        :param str command: executable command
-        :param str valuetype: (only for mode = 'get') type of received data. Default *void*.
-        :return: None (if mode = **'set'**) or received data (if mode = **'get'**)
+    Args:
+        role (str): Принадлежность к группе для отправки сообщений ('alpha', 'beta', 'gamma', 'delta' - разработчик).
+        mode (str): Режим работы ('get', 'set').
+        command (str): Команда для выполнения.
+        valuetype (str, optional): Ожидаемый тип данных при чтении (только для mode='get'). Defaults to 'void'.
 
-        **Examples:**
-
-        **1.**
-        We need to let the server know that the script is over. Let's write the next command:
-
-        >>> Program('script', 'set', 'done')
-
-        The next string appears in case of successfull execution in the terminal:
-
-        b'{"name": "script", "mode": "set", "command": "done"}'
-
-        Else if the command isn't executed you will see the next string in a terminal:
-
-        ``b'<!DOCTYPE html><html><head><title>Bad Request</title></head><body><h2>Access Error: 400 -- Bad Request</h2><pre>Bad Request</pre></body></html>'``
-
-        If valuetype = 'void' and mode = 'get', the error will appear and will be shown in MOKO SE Stage
+    Returns:
+        Зависит от режима:
+        - 'set': None
+        - 'get': Данные, полученные от Telegram.
     """
     check_project_state()
-
-    URLWrite: str = _UrlProgramWrite
-    URLRead: str = _UrlProgramRead
-
-    command_to_send: str = '{"name":"' + str(name) + '","mode":"' + str(mode) + '","command":"' + str(command) + '"}'
-    send_request(URLWrite, command_to_send)
-
-    progdata: str = check_status("program", mode, URLRead)
-    return parse_data(progdata, mode, valuetype)
-
-def EndScript(command: str = 'done') -> None:
-    """
-        Required function that must be at the end of every script. Lets the server know that the script is finished.
-
-        :param command: executable command
-        :return: None
-    """
-    Program('script','set',command)
-    sys.exit()
-
-
-###################################################################################################################
-
-    ####################    #############    ##
-             ##             ##               ##
-             ##             ##               ##
-             ##             ##               ##
-             ##             ########         ##
-             ##             ##               ##
-             ##             ##               ##
-             ##             ##               ##
-             ##             #############    #############
-
-###################################################################################################################
-
-
-def Telegram(role: str, mode: str, command: str, valuetype: str = 'void') -> ...:
-    """
-        This function works with Telegram
-
-        :param str role: belonging to the group that messages are sent to (alpha, beta, gamma, delta (developer))
-        :param str mode: command mode (**'get'**, **'set'**)
-        :param str command: executable command
-        :return: None (if mode = **'set'**) of received data from Telegram (if mode = **'get'**)
-
-        **Examples:**
-
-        **1.**
-        We need to get a message from Telegram-bot (MOKO SE BOT). Let's write the next command:
-
-        >>> Telegram('alpha', 'set', 'Hello, I\\'m a bot!')
-
-        The next string appears in case of successfull execution in the terminal:
-
-        ``b'{"role": "alpha", "mode": "set", "command": "Hello, I'm a bot!"}'``
-
-        Else if the command isn't executed you will see the next string in a terminal:
-
-        ``b'<!DOCTYPE html><html><head><title>Bad Request</title></head><body><h2>Access Error: 400 -- Bad Request</h2><pre>Bad Request</pre></body></html>'``
-
-        If valuetype = 'void' and mode = 'get', the error will appear and will be shown in MOKO SE Stage
-    """
-    check_project_state()
-
     URLWrite: str = _UrlTelegramWrite
     URLRead: str = _UrlTelegramRead
-
-    command_to_send: str = '{"role":"' + str(role) + '","mode":"' + str(mode) + '","command":"' + str(command) + '"}'
+    command_to_send: str = f'{{"role":"{str(role)}","mode":"{str(mode)}","command":"{str(command)}"}}'
     send_request(URLWrite, command_to_send)
-
     tgmdata: str = check_status("telegram", mode, URLRead)
     return parse_data(tgmdata, mode, valuetype)
+# endregion
 
+# region --- MAX / Мессенджер MAX ---
+def Max(role: Literal['alpha', 'beta', 'gamma', 'delta', 'xi', 'id'] = 'alpha',
+             mode: Literal['set','get'] = 'set',
+             command: str = '',
+             valuetype: Literal['void'] = 'void') -> ...:
+    """
+    Работает с MAX ботом MOKO SE.
 
-###################################################################################################################
+    Args:
+        role (str): Принадлежность к группе для отправки сообщений ('alpha', 'beta', 'gamma', 'delta' - разработчик).
+        mode (str): Режим работы ('get', 'set').
+        command (str): Команда для выполнения.
+        valuetype (str, optional): Ожидаемый тип данных при чтении (только для mode='get'). Defaults to 'void'.
 
-    ##        ##    ############    ##              ######
-    ##        ##    ##              ##              ##    ##
-    ##        ##    ##              ##              ##    ##
-    ##        ##    ##              ##              ##  ##
-    ############    ######          ##              ####
-    ##        ##    ##              ##              ##
-    ##        ##    ##              ##              ##
-    ##        ##    ##              ##              ##
-    ##        ##    ############    #############   ##
+    Returns:
+        Зависит от режима:
+        - 'set': None
+        - 'get': Данные, полученные от Max.
+    """
+    check_project_state()
+    URLWrite: str = _UrlMaxWrite
+    URLRead: str = _UrlMaxRead
+    command_to_send: str = f'{{"role":"{str(role)}","mode":"{str(mode)}","command":"{str(command)}"}}'
+    send_request(URLWrite, command_to_send)
+    maxdata: str = check_status("max", mode, URLRead)
+    return parse_data(maxdata, mode, valuetype)
+# endregion
 
-###################################################################################################################
+# region *** Program / Программа *******************************
+# region -------   Collection Literal Program
+# ==========================================
+# 1. ОПИСЫВАЕМ КОМАНДЫ (Type Aliases)
+# Это сделает код ниже чистым и читаемым
+# ==========================================
 
+# Для tree (есть и set, и get)
+TreeGetStaticCmd = Literal['hash =',
+                     'script', 'ScriptStatus',
+                     'project', 'ProjectStatus']
+TreeGetCmd = TreeGetStaticCmd  | str
+TreeSetStaticCmd = Literal['select = ', 'info = ', 'chosen = done', 'chosen = failed', 'chosen = passed',
+                                                   'chosen = canceled','chosen = frozen',
+                                                    'chosen = empty','chosen = reset']
+TreeSetCmd = TreeSetStaticCmd | str
 
+# Для control (есть и set, и get)
+ControlSetStaticCmd = Literal[# ------- main -------
+                        'Minimized', 'OpenProject', 'SaveProject',
+                        # ------- Panel Control -------
+                        'Start', 'Pause', 'Stop', 'Reset','EditExecution', 'ProjectHistory', 'PersonalProjects',
+                        # ------- Project -------
+                        'SaveProjectReport', 'SaveTempProjectReport', 'SaveProjectReportAs','LoadProjectReport',
+                        # ------- Word / Pdf-------
+                        'SaveWordReport', 'SaveWordReportAs', 'SavePdfReport','SavePdfReportAs',
+                        # ------- Stage -------
+                        'StageClear','SaveStageReport',
+                        # ------- Help Links -------
+                        'License', 'Documentation','YouTube','Telegram','GitHub','AboutCompany',
+                        # ------- Edit Report -------
+                        'EditData','AddAllReports','AddNameReports','SaveAllReportsToAFolder',
+                        # ------- Report Settings --------
+                        'UseCustomReportName = true', 'UseCustomReportName = false','UseCustomPathName = true','UseCustomPathName = false',
+                        'UserReportName =','UserPathName = ',
+                        # ------- Language -------
+                        'Language']
+ControlGetCmd = Literal['Version', 'screenshot']
+
+ControlSetCmd = ControlSetStaticCmd | str
+
+# Для script (допустим, ТОЛЬКО set)
+ScriptSetStaticCmd = Literal['Script = done', 'Script = failed', 'Script = passed','Script = start','Script = canceled']
+ScriptSetCmd = ScriptSetStaticCmd | str
+
+# Для project (есть set)
+ProjectSetCmd = Literal['start', 'done', 'pause', 'stop', 'reset']
+
+# Для Time (есть  get)
+TimeGetCmd = Literal[# ________ Current _________
+                        'Current', 'CurrentDateAndTime', 'CurrentDate', 'CurrentTime',
+                        # ________ Project _________
+                        'ProjectStart', 'ProjectStartDateAndTime', 'ProjectStartDate', 'ProjectStartTime',
+                        'ProjectExecution', 'TotalExecution',
+                        'ProjectIdle', 'ProjectStop', 'TotalIdle', 'TotalStop',
+                        'ProjectError', 'TotalError',
+                        # ________  Script _________
+                        "ScriptStart", "ScriptStartDateAndTime",
+                        "ScriptStartDate", "ScriptStartTime",
+                        "ScriptExecution", "ScriptIdle", "ScriptStop",
+                        "ScriptError"]
+# endregion
+
+# region  -------   Overload Program ---
+
+# ==========================================
+# 2. ПЕРЕГРУЗКИ ФУНКЦИИ (@overload)
+# Строго связываем: Имя -> Режим -> Команды
+# ==========================================
+# --- TREE SET---
+@overload
+def Program(
+    name: Literal['tree'],
+    mode: Literal['set'],
+    command: TreeSetCmd # Используем SET команду
+) -> str: ...
+
+# --- TREE GET---
+@overload
+def Program(
+    name: Literal['tree'],
+    mode: Literal['get'],
+    command: TreeGetCmd, # Используем GET команду
+    valuetype: Literal['string'] = 'string'
+) -> str: ...
+
+# --- CONTROL SET---
+@overload
+def Program(
+    name: Literal['control'],
+    mode: Literal['set'],
+    command: ControlSetCmd
+) -> str: ...
+
+# --- CONTROL GET---
+@overload
+def Program(
+    name: Literal['control'],
+    mode: Literal['get'], # Исправлен комментарий и режим
+    command: ControlGetCmd,
+    valuetype: Literal['string'] = 'string'
+) -> str: ...
+
+# --- SCRIPT SET---
+@overload
+def Program(
+    name: Literal['script'],
+    mode: Literal['set'], # Если name='script', mode может быть ТОЛЬКО 'set'
+    command: ScriptSetCmd
+) -> str: ...
+
+# --- PROJECT SET---
+@overload
+def Program(
+    name: Literal['project'],
+    mode: Literal['set'],
+    command: ProjectSetCmd
+) -> str: ...
+
+# --- TIME GET---
+@overload
+def Program(
+    name: Literal['time'],
+    mode: Literal['get'], # Только 'get'
+    command: TimeGetCmd,
+    valuetype: Literal['void', 'string'] = 'void'
+) -> str: ...
+# endregion
+
+# region ------  Program / Программа ---
+
+# ==========================================
+# 3. ОСНОВНАЯ РЕАЛИЗАЦИЯ (Ваша логика)
+# ==========================================
+def Program(
+            name: str = 'control',
+            mode: str = 'set',
+            command: str = '',
+            valuetype: str = 'void'
+) -> str:
+    """
+    Центральная функция управления внутренней логикой и интерфейсом MOKO SE.
+    Работает как маршрутизатор: конкретное действие определяется комбинацией параметров `name`, `mode` и `command`.
+
+    Поддерживаемые подсистемы (параметр `name`):
+      - 'tree': Управление деревом проекта (выделение хэшей, установка статусов, получение ScriptStatus).
+      - 'control': Программное управление GUI MOKO SE (нажатие кнопок Start/Stop, вызов меню сохранения отчетов).
+      - 'script': Установка финального статуса выполнения текущего скрипта (например, 'Script = passed').
+      - 'project': Глобальное управление состоянием проекта ('start', 'stop', 'pause').
+      - 'time': Запрос системных таймеров и метрик времени ('Current', 'ProjectExecution', 'ScriptError' и др.).
+
+    Args:
+        name (str): Имя подсистемы, к которой обращается команда.
+        mode (str): Режим работы. 'set' (отправить команду/изменить состояние)
+                    или 'get' (запросить данные). Допустимые режимы зависят от выбранной подсистемы.
+        command (str): Текст команды. Формат строго зависит от `name` и `mode`.
+                       Примеры: 'select = <hash>', 'ScriptStatus', 'Start', 'CurrentDate'.
+        valuetype (str, optional): Ожидаемый тип данных при mode='get'.
+                                   Поддерживаются: 'string', 'int', 'float', 'bool', 'array...'.
+                                   При mode='set' игнорируется. Defaults to 'void'.
+
+    Returns:
+        str | int | float | bool | list | None:
+            - При mode='get' возвращает данные от сервера, приведенные к типу `valuetype`.
+            - При mode='set' всегда возвращает None.
+
+    Notes:
+        Функция имеет встроенную защиту от рассинхрона: если проект в MOKO SE поставлен
+        на паузу, выполнение Python-скрипта в этой функции заморозится до снятия паузы.
+        Если проект остановлен, скрипт принудительно завершится (sys.exit).
+    """
+    check_project_state()
+    URLWrite: str = _UrlProgramWrite
+    URLRead: str = _UrlProgramRead
+    command_to_send: str = f'{{"name":"{str(name)}","mode":"{str(mode)}","command":"{str(command)}"}}'
+    send_request(URLWrite, command_to_send)
+    progdata: str = check_status("program", mode, URLRead)
+    return parse_data(progdata, mode, valuetype)
+# endregion
+
+# endregion ********************************************************************
+
+# endregion ##################################################################
+
+# region ### Execution Control / Управление выполнением ######################
+
+# region ******* EndScript / Завершает выполнение текущего скрипта. *******
+def EndScript(command: str = None) -> None:
+    """
+    Завершает выполнение текущего скрипта.
+
+    Обязательная функция, которая должна вызываться в конце каждого скрипта,
+    чтобы уведомить MOKO SE о его завершении.
+
+    Args:
+        command (str, optional): Команда, отправляемая серверу при завершении.
+                                 Возможные значения:
+                                 - 'done': Выполнено (желтый нейтральный цвет).
+                                 - 'passed': Пройдено (зеленый цвет).
+                                 - 'failed': Не пройдено (красный цвет).
+
+                                 Также поддерживаются синонимы:
+                                 - 'good' -> преобразуется в 'passed'
+                                 - 'bad' -> преобразуется в 'failed'
+
+                                 Если параметр не передан, автоматически получает
+                                 статус из ScriptResult().
+                                 Если передано неподдерживаемое значение,
+                                 устанавливается статус 'failed'.
+                                 Defaults to None.
+    """
+    if command is None:
+        command = ScriptResult()
+
+    # Нормализация значений
+    command_lower = str(command).lower()
+
+    # Преобразование синонимов
+    if command_lower in {'good', 'passed'}:
+        command = 'passed'
+    elif command_lower in {'bad', 'failed'}:
+        command = 'failed'
+    elif command_lower == 'done':
+        command = 'done'
+    else:
+        # Если ничего не подошло, пишем failed
+        command = 'failed'
+
+    Program('script', 'set', command)
+    sys.exit()
+# endregion *****************************************
+
+# region ******* RestartProject / Перезапускает текущий проект с нуля. *******
+def RestartProject() -> None:
+    """
+    Перезапускает текущий проект с нуля.
+
+    Выполняет полный цикл перезапуска проекта в MOKO SE, состоящий из трёх этапов:
+    1. Очищает текущую стадию выполнения (StageClear).
+    2. Сбрасывает все накопленные результаты и состояние проекта (Reset).
+    3. Завершает текущий скрипт с нейтральным статусом (Done).
+
+    Функция не принимает аргументов и не возвращает значения.
+
+    Использование:
+        Вызовите эту функцию в любой точке скрипта, когда необходимо
+        полностью перезапустить проект и начать выполнение заново.
+        После вызова скрипт завершается, и MOKO SE инициирует
+        новый цикл запуска.
+
+    Пример:
+        >>> RestartProject()
+    """
+    Program('control', 'set', 'StageClear')
+    Program('control', 'set', 'reset')
+    Program('script', 'set', 'done')
+    sys.exit()
+# endregion *****************************************
+
+# region ******* Tree & Hash / Дерево и Хэши *********************
+
+# region --- ScriptResult / Получает результат выполнения текущего скрипта из дерева MOKO SE. --
+def ScriptResult() -> str:
+    """
+    Получает результат выполнения текущего скрипта из дерева MOKO SE.
+
+    Returns:
+        str: Статус выполнения ('passed', 'failed', 'done').
+    """
+    return Program('tree', 'get', 'ScriptStatus', 'string')
+# endregion
+
+# region --- ProjectResult / Получает результат выполнения всего проекта из дерева MOKO SE. --
+def ProjectResult() -> str:
+    """
+    Получает результат выполнения всего проекта из дерева MOKO SE.
+
+    Returns:
+        str: Статус выполнения проекта ('passed', 'failed', 'done').
+    """
+    return Program('tree', 'get', 'ProjectStatus', 'string')
+# endregion
+
+# region --- SetHash / Устанавливает результат выполнения в дереве (Hash). --
+def SetHash(command: Literal['done', 'passed', 'failed'] = 'done') -> None:
+    """
+    Устанавливает результат выполнения в дереве (Hash).
+
+    Args:
+        command (str, optional): Статус для установки.
+                                 Возможные значения:
+                                 - 'done': Выполнено (желтый нейтральный цвет).
+                                 - 'passed': Пройдено (зеленый цвет).
+                                 - 'failed': Не пройдено (красный цвет).
+                                 Defaults to 'done'.
+    """
+    Program('tree', 'set', f'chosen = {command}')
+# endregion
+
+# region --- SelectHash / Выбирает хэш(Hash) в дереве. --
+def SelectHash(hash: str) -> None:
+    """
+    Выбирает хэш в дереве.
+
+    Args:
+        hash (str): Хэш для выбора.
+    """
+    Program('tree', 'set', 'select = ' + hash)
+    return
+# endregion
+
+# region --- ExecuteStep / Выполняет шаг: выбирает его в дереве и выводит название в Stage. --
+def ExecuteStep(step_string: str) -> None:
+    """
+    Выполняет шаг: выбирает его в дереве и выводит название в Stage.
+
+    Ожидает строку в формате 'Название шага$HASH_ID'.
+    Если символ '$' отсутствует, вся строка передается как хэш.
+
+    Args:
+        step_string (str): Строка с описанием шага и хэшем.
+    """
+    # Удаляем пробелы в начале и в конце строки во избежание ошибок
+    step_string = step_string.strip()
+
+    # Разделяем строку по символу '$' максимум 1 раз
+    parts = step_string.split('$', 1)
+
+    if len(parts) == 2:
+        step_name = parts[0]
+        step_id = parts[1]
+
+        # Выбираем хэш в дереве (склеиваем обратно название и ID)
+        SelectHash(f"{step_name}${step_id}")
+        # Выводим информационное сообщение о начале шага
+        Stage(f"--- {step_name} ---")
+    else:
+        # Если символа $ в строке нет, используем всю строку как хэш
+        SelectHash(step_string)
+        # Выводим строку в Stage как есть
+        Stage(f"--- {step_string} ---")
+
+    return
+# endregion
+
+# region --- SelectCheckHash / Выбирает хэш в дереве и проверяет, является ли он пустым. --
+def SelectCheckHash(hash: str) -> bool:
+    """
+    Выбирает хэш в дереве и проверяет, является ли он пустым.
+
+    Args:
+        hash (str): Хэш для выбора и проверки.
+
+    Returns:
+        bool: True, если статус хэша 'empty', иначе False.
+    """
+    Program('tree', 'set', f'select = {hash}')
+    status = Program('tree', 'get', f'hash = {hash}', 'string')
+
+    if status == 'empty':
+        return True
+    return False
+# endregion
+
+# endregion *******************************************************
+
+# region ******* Time / Время **************************************
+
+# region --- TimeParameter / Литералы времени MOKO SE
+TimeParameter = Literal[
+    # Текущая дата и время
+    "Current", "CurrentDateAndTime",
+    # Текущая дата
+    "CurrentDate",
+    # Текущее время
+    "CurrentTime",
+
+    # Дата и время запуска проекта
+    "ProjectStart", "ProjectStartDateAndTime",
+    # Дата запуска проекта
+    "ProjectStartDate", "ProjectStartTime",
+    # Время выполнения проекта
+    "ProjectExecution", "TotalExecution",
+    # Время когда проект не выполнялся
+    "ProjectStop", "TotalStop",
+    "ProjectIdle", "TotalIdle",
+    # Общее время ошибок в проекте
+    "ProjectError", "TotalError",
+
+    # Дата и время запуска скрипта
+    "ScriptStart", "ScriptStartDateAndTime",
+    # Дата запуска скрипта
+    "ScriptStartDate", "ScriptStartTime",
+
+    # Время выполнения скрипта
+    "ScriptExecution",
+    # Время когда скрипт не выполнялся
+    "ScriptStop", "ScriptIdle",
+    # Время ошибок в скрипте 00:00:00
+    "ScriptError"
+]
+# endregion
+
+# region --- GetTime / Получает параметры времени через системную функцию MOKO.Program.
+def GetTime(command: TimeParameter = "Current"):
+    """
+    Получает параметры времени через системную функцию MOKO.Program.
+
+    Args:
+        command (TimeParameter, optional): Запрашиваемый параметр времени.
+                                           По умолчанию 'Current'.
+
+    Returns:
+        Результат выполнения MOKO.Program.
+    """
+    return Program('time', 'get', command)
+# endregion
+
+# region --- TimeReport / Управляет таблицей со временем выполнения скрипта. ---
+def TimeReport(action: Literal["init", "add", "set"] = "init", lang: Literal["RU", "EN"] = "EN") -> None:
+    """
+    Управляет таблицей со временем выполнения скрипта.
+
+    Args:
+        action (Literal["init", "add", "set"]):
+            - 'init': Создает таблицу с заголовками.
+            - 'add' или 'set': Добавляет строку с данными о выполнении.
+        lang (Literal["RU", "EN"]): Язык заголовков и ID таблицы. По умолчанию 'EN'.
+    """
+    # Задаем заголовок и ID таблицы в зависимости от языка
+    if lang == "RU":
+        table_title = "Время выполнения скрипта"
+        headers = (
+            "Название скрипта#350;"
+            "Время запуска#120;"
+            "Время окончания#120;"
+            "Время исполнения#150"
+        )
+    else:  # EN (по умолчанию)
+        table_title = "Script Execution Time"
+        headers = (
+            "Script Name#350;"
+            "Start Time#120;"
+            "End Time#120;"
+            "Execution Time#150"
+        )
+
+    if action == "init":
+        # Используем table_title как визуальный заголовок
+        Report(table_title, "info", "table", headers)
+
+    elif action in ("add", "set"):
+        # Получаем имя файла и универсально отрезаем любое расширение
+        script_name, _ = os.path.splitext(os.path.basename(sys.argv[0]))
+
+        row_data = (
+            f"{script_name};"
+            f"{GetTime('ScriptStart')};"
+            f"{GetTime('CurrentDateAndTime')};"
+            f"{GetTime('ScriptExecution')}"
+        )
+        # Используем тот же table_title как ID для обновления таблицы
+        Report(table_title, "set", "table", row_data)
+# endregion
+
+# endregion ********************************************************
+
+# region ******* Report / Отчет ************************************
+
+# region --- ReportTableInfo / Упрощенный вызов Report для создания таблиц. ---
+def ReportTableInfo(title: str, columns: str, base_width: int = 15) -> None:
+    """
+    Упрощенный вызов Report для создания таблиц.
+    Автоматически рассчитывает ширину колонок (#XX) на основе длины самой длинной строки.
+    Формула: base_width + (символы - 1) * 6.
+
+    Поддерживает многострочные заголовки через \\n (ширина считается по самой длинной строке).
+    Пробелы справа сохраняются для ручного увеличения ширины.
+    Пробелы слева перед \\n автоматически удаляются при сборке финальной строки.
+
+    Args:
+        title (str): Заголовок таблицы.
+        columns (str): Названия колонок через точку с запятой.
+                       Пример: "ID\\n точки;Канал \\n какойто;Мощность      "
+        base_width (int): Базовая ширина для колонки из 1 символа. По умолчанию 15.
+    """
+    column_list = columns.split(';')
+    formatted_columns = []
+
+    for col in column_list:
+        # Убираем пробелы только СЛЕВА у всей колонки (если они были после ;)
+        col = col.lstrip()
+
+        max_len = 0
+        cleaned_lines = []  # Сюда будем собирать строки без левых пробелов
+
+        # Разбиваем колонку на отдельные строки по символу переноса
+        lines = col.split('\n')
+
+        for line in lines:
+            # Убираем пробелы слева у каждой строки, но сохраняем справа
+            clean_line = line.lstrip()
+            cleaned_lines.append(clean_line)  # Сохраняем очищенную версию для финальной строки
+
+            # Считаем длину этой конкретной строки
+            line_len = len(clean_line)
+
+            # Запоминаем максимальную длину среди всех строк колонки
+            if line_len > max_len:
+                max_len = line_len
+
+        # Применяем формулу с переменной base_width
+        width = base_width + (max_len - 1) * 6
+
+        # Склеиваем очищенные строки обратно через \n (пробелы перед \n исчезнут)
+        final_col = "\n".join(cleaned_lines)
+
+        # Добавляем рассчитанную ширину
+        formatted_columns.append(f"{final_col}#{width}")
+
+    # Собираем всё обратно в одну строку через точку с запятой
+    final_string = ";".join(formatted_columns)
+
+    # Вызываем оригинальную функцию Report
+    Report(title, 'info', 'table', final_string)
+
+    return
+# endregion ****************************************************
+
+# region --- SaveReport / Сохраняет отчет в указанном формате. ---
+def SaveReport(report_format: Literal["Word", "PDF", "Word as", "Pdf as"] = "Word") -> None:
+    """
+    Сохраняет отчет в указанном формате.
+
+    Args:
+        report_format (Literal): Формат сохранения отчета.
+                                 Допустимые значения: 'Word', 'PDF', 'Word as', 'Pdf as'.
+                                 По умолчанию 'Word'.
+    """
+    # Точно сопоставляем ввод программиста с тем, что понимает сервер
+    server_commands = {
+        "Word": "SaveWordReport",
+        "PDF": "SavePdfReport",
+        "Word as": "SaveWordReportAs",
+        "Pdf as": "SavePdfReportAs"
+    }
+
+    # Достаем нужную команду из словаря
+    command = server_commands[report_format]
+
+    # Вызываем команду
+    Program('control', 'set', command)
+    return
+# endregion ---------------------------------------------------------
+
+# endregion ********************************************************
+
+# endregion ##########################################################################
+
+# region ### Internal Helper Functions / Внутренние вспомогательные функции ###
+
+# region --- check_project_state / Проверка состояния проекта ---
 def check_project_state() -> None:
     """
-        This function checks project state
+    Проверяет состояние проекта в MOKO SE и синхронизирует выполнение скрипта.
 
-        :return: None
+    - Если состояние 'run', продолжает выполнение.
+    - Если состояние 'pause', приостанавливает скрипт до смены состояния.
+    - Если состояние 'stop', немедленно завершает скрипт.
     """
     URLPSRead: str = _UrlProjectStateRead
     projectstate: str = ''
@@ -780,16 +1010,23 @@ def check_project_state() -> None:
             sys.exit()
         if projectstate.lower() == 'pause':
             time.sleep(0.05)
+# endregion
 
+# region --- check_status / Проверка статуса ---
 def check_status(system: str, mode: str, URLRead: str) -> str:
     """
-        This function checks MOKO SE status (ready or busy) and status code
-        (if data was received bad more than 9 time, the error will appear)
+    Ожидает готовности компонента MOKO SE и получает от него данные.
 
-        :param str system: called function (Driver, Program, ...)
-        :param str mode: command mode ('get', 'set', 'init', 'close', ...)
-        :param str URLRead: URL for getting data from a server
-        :return: Data from a server. If badresponse > 9, an empty string wll return
+    Функция циклически опрашивает URLRead, пока статус компонента не станет 'ready'.
+    Имеет 10 попыток, после чего возвращает пустую строку.
+
+    Args:
+        system (str): Имя системы/компонента (например, 'driver', 'plugin').
+        mode (str): Режим, в котором была вызвана команда ('get', 'set', и т.д.).
+        URLRead (str): URL для чтения статуса и данных.
+
+    Returns:
+        str: Строка с данными от компонента или пустая строка в случае ошибки.
     """
     data: str = ""
     badresponse: int = 0
@@ -797,38 +1034,47 @@ def check_status(system: str, mode: str, URLRead: str) -> str:
     while ((status.lower() != 'ready') and (badresponse < 10)):
         response = requests.get(URLRead)
         if (response.status_code != 200):
-            Stage("ERROR IN PYTHON LIBRARY! BAD RESPONSE CODE! " + str(response.status_code), 'error')
-            print("ERROR IN PYTHON LIBRARY! BAD RESPONSE CODE! " + str(response.status_code) + '\n' +
-                  str(10 - badresponse) + ' TRIES LEFT')
+            Stage(f"ERROR IN PYTHON LIBRARY! BAD RESPONSE CODE! {str(response.status_code)}", 'error')
             badresponse += 1
         else:
             y = json.loads(response.content)
             status: str = y.get(f'{system}status')
-            if (mode.lower() == 'get' or 'check'):
+            if mode.lower() in ('get', 'check', 'init'):
                 data: str = y.get(f'{system}data')
-        if system in ['messenger', 'driver', 'plugin', 'utility', 'program']:
+        if system in ['messenger', 'driver', 'plugin', 'utility']:
             time.sleep(0.05)
-
     if is_bad_response(badresponse): return ""
     return data
+# endregion
 
-def parse_data(data: str, mode: str, valuetype: str = 'void') -> ...:
+# region --- parse_data / Разбор данных ---
+def parse_data(data: str = '', mode: str = '', valuetype: str = 'void') -> ...:
     """
-        This function parses the received ata depending on valuetype.
+    Преобразует строковые данные от сервера в нужный тип Python.
 
-        :param str data: received data
-        :param str mode: command mode ('get', 'set', 'init', 'close', ...)
-        :param str valuetype: data type, received from something (only if mode = "get")
-        :return: Data of the type specified in valuetype
+    Поддерживает базовые типы (int, float, bool, str) и их массивы (arrayint, ...).
+
+    Args:
+        data (str): Входная строка данных от сервера.
+        mode (str): Режим, в котором была вызвана команда. Парсинг выполняется только для 'get', 'check', 'init'.
+        valuetype (str, optional): Целевой тип данных. Defaults to 'void'.
+
+    Returns:
+        Преобразованные данные или None, если парсинг не требуется или невозможен.
     """
     if mode.lower() not in ["get", "check", "init"]: return None
-
     splitter: str = ";"
     if is_semicolon_error(data, splitter, valuetype): return None
-
     data: str = check_data(data, splitter)
-
-    if valuetype.lower() == 'boolean':
+    if valuetype.lower() == 'arrayboolean':
+        return to_list(bool, data, splitter)
+    elif valuetype.lower() == 'arrayfloat':
+        return to_list(float, data, splitter)
+    elif valuetype.lower() == 'arrayint':
+        return to_list(int, data, splitter)
+    elif valuetype.lower() == 'arraystring':
+        return to_list(str, data, splitter)
+    elif "bool" in valuetype.lower():
         data: str = data.split(splitter)[0]
         return True if data.lower() == "true" else False
     elif valuetype.lower() == 'float':
@@ -838,38 +1084,39 @@ def parse_data(data: str, mode: str, valuetype: str = 'void') -> ...:
         data: str = data.split(splitter)[0]
         data: str = data.split(".")[0]
         return int(data.split(",")[0])
-    elif valuetype.lower() == 'arrayboolean':
-        return to_list(bool, data, splitter)
-    elif valuetype.lower() == 'arrayfloat':
-        return to_list(float, data, splitter)
-    elif valuetype.lower() == 'arrayint':
-        return to_list(int, data, splitter)
-    elif valuetype.lower() == 'arraystring':
-        return to_list(str, data, splitter)
-    else: # Используется в качестве valuetype = 'string'
+    else:  # Используется в качестве valuetype = 'string'
         return data.split(splitter)[0]
+# endregion
 
+# region --- check_data / Проверка данных ---
 def check_data(data: str, splitter: str = ";") -> str:
     """
-        This function checks received data. If there is the character ';' at the end of the data,
-        the character will be deleted
+    Удаляет лишний символ-разделитель (';') в конце строки, если он есть.
 
-        :param str data: received data
-        :param str splitter: character to split
-        :return: Checked data
+    Args:
+        data (str): Входная строка.
+        splitter (str, optional): Символ-разделитель. Defaults to ";".
+
+    Returns:
+        str: Очищенная строка.
     """
     if data.rfind(splitter) == len(data)-1:
         data: str = data[:-1]
     return data
+# endregion
 
+# region --- to_list / Преобразовать в список ---
 def to_list(func, data: str, splitter: str = ";") -> ...:
     """
-        This function splits entered data creating a list
+    Разделяет строку на список и преобразует каждый элемент к заданному типу.
 
-        :param func: a function that is related to the data (int(), float(), ...)
-        :param str data: received data
-        :param str splitter: character to split
-        :return: A list of values with type specified in func() => (int, float, ...)
+    Args:
+        func: Функция преобразования типа (int, float, bool, str).
+        data (str): Входная строка с данными, разделенными `splitter`.
+        splitter (str, optional): Символ-разделитель. Defaults to ";".
+
+    Returns:
+        list: Список с преобразованными значениями.
     """
     split_data: list = data.split(splitter)
     result: list = []
@@ -884,51 +1131,59 @@ def to_list(func, data: str, splitter: str = ";") -> ...:
         else:
             result.append(func(spl))
     return result
+# endregion
 
+# region --- is_semicolon_error / Ошибка с точкой с запятой ---
 def is_semicolon_error(data: str, splitter: str, valuetype: str) -> bool:
     """
-        This function checks the presence of two splitter characters at the end of the input.
+    Проверяет наличие двойного разделителя (';;') в конце строки.
 
-        :param str data: received data
-        :param str splitter: character to split
-        :param str valuetype: specified value type
-        :return: Will print the error in the console and in the program MOKO SE Stage and return True,
-                 if there are 2 characters splitter at the end of the data, else - False
+    Это считается ошибкой формата данных. При обнаружении выводит ошибку в Stage.
+
+    Args:
+        data (str): Входная строка.
+        splitter (str): Символ-разделитель.
+        valuetype (str): Тип значения, для которого производится проверка.
+
+    Returns:
+        bool: True, если ошибка найдена, иначе False.
     """
     if data[-2:] == f"{2*splitter}":
-        Stage(f'ERROR IN PYTHON LIBRARY!','error')
+        Stage(f'ERROR IN PYTHON LIBRARY!', 'error')
         Stage(f'INPUT DATA CONTAINS MORE THAN 1 \'\'{splitter}\'\' AT THE END!', 'error')
         Stage(f'DATA: {data}     =>     VALUETYPE: {valuetype.upper()}', 'error')
-        print(f'ERROR IN PYTHON LIBRARY!')
-        print(f'INPUT DATA CONTAINS MORE THAN 1 \'\'{splitter}\'\' AT THE END!')
-        print(f'DATA: {data}     =>     VALUETYPE: {valuetype.upper()}')
         return True
     return False
+# endregion
 
+# region --- is_bad_response / Проверка плохого ответа ---
 def is_bad_response(badresponse: int) -> bool:
     """
-        This function checks server responses. if data was received bad more than 9 time
+    Проверяет, не превышено ли количество неудачных ответов от сервера.
 
-        :param int badresponse: the number of bad responses
-        :return: Will print the error in the console and in the program MOKO SE Stage and return True,
-                 if badresponses more than 9, else - False
+    Args:
+        badresponse (int): Счетчик неудачных ответов.
+
+    Returns:
+        bool: True, если количество ошибок >= 10, иначе False.
     """
     if (badresponse >= 10):
         Stage("ERROR IN PYTHON LIBRARY! FUNCTION EXIT BECAUSE OF BAD RESPONSES", 'error')
-        print("ERROR IN PYTHON LIBRARY! FUNCTION EXIT BECAUSE OF BAD RESPONSES")
         return True
     return False
+# endregion
 
-
-
+# region --- send_request / Отправка запроса ---
 def send_request(URLWrite: str, request: str) -> None:
     """
-        This function sends requests to a server
+    Отправляет POST-запрос на указанный URL с данными в формате JSON.
 
-        :param str URLWrite: URL for sending data to a server
-        :param request: send request in json format
-        :return: None
+    Args:
+        URLWrite (str): URL для отправки запроса.
+        request (str): Тело запроса в виде строки JSON.
     """
     headers: dict = {'Content-Type': 'application/json; charset=utf-8'}
     response = requests.post(URLWrite, headers=headers, data=request.encode('utf-8'))
-    print(response.content)
+# endregion
+
+# endregion
